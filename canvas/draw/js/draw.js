@@ -1,106 +1,100 @@
 'use strict';
-
-const canvas = document.querySelector('#wall'),
+const canvas = document.querySelector('#draw'),
       ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
 
-const minElements = 25,
-      maxElements = 100,
-      maxSize = 0.6,
-      minSize = 0.1,
-      minSpeed = -0.2,
-      maxSpeed = 0.2,
-      time = Date.now(),
-      elements = [];
-function getIntRandom(min, max) {
-  return Math.round(Math.random() * (max - min) + min);
+function setCanvasSize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 }
-function getDblRandom(min, max) {
-  return (Math.random() * (max - min) + min);
+function clearCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
+window.addEventListener('load', setCanvasSize);
+window.addEventListener('resize', () => {
+  clearCanvas();
+  setCanvasSize();
+});
+window.ondblclick = () => {
+  clearCanvas();
+};
 
-const pointFunctions = [
-  function nextPoint(x, y, time) {
-    return {
-      x: x + Math.sin((50 + x + (time / 10)) / 100) * 3,
-      y: y + Math.sin((45 + x + (time / 10)) / 100) * 4
-    };
-  },
-  function nextPoint(x, y, time) {
-    return {
-      x: x + Math.sin((x + (time / 10)) / 100) * 5,
-      y: y + Math.sin((10 + x + (time / 10)) / 100) * 2
+const maxBrushRadius = 100, // set limits of brush parameters
+      minBrushRadius = 5,
+      maxBrushColor = 359,
+      minBrushColor = 0;
+let drawing = false, // set auxiliary variables
+    needsRepaint = false,
+    reverse = false,
+    brushRadius = maxBrushRadius,
+    brushColor = minBrushColor,
+    increaseBrush = false,
+    prevX, prevY;
+
+function getHSL(color) { // convert color to HSL
+  return `hsl(${color}, 100%, 50%)`;
+}
+function setBrushColor(color, reverse) { // change color depending on conditions
+  if (reverse) {
+    if (color > minBrushColor) {
+      return --color;
+    } else if (color === minBrushColor) {
+      return color;
+    }
+  } else {
+    if (color < maxBrushColor) {
+      return ++color;
+    } else if (color === maxBrushColor) {
+      return color;
     }
   }
-];
-
-class Element {
-  constructor() {
-    this.x = getIntRandom(0, canvas.width);
-    this.y = getIntRandom(0, canvas.height);
-    this.size = getDblRandom(minSize, maxSize);
-    this.nextPoint = pointFunctions[getIntRandom(0, pointFunctions.length - 1)];
-  }
 }
-class Circle extends Element {
-  constructor() {
-    super();
+function setBrushRadius(radius) { // change radius depending on conditions
+  if (radius === maxBrushRadius) {
+    increaseBrush = false;
+  } else if (radius === minBrushRadius) {
+    increaseBrush = true;
   }
-  draw(x, y) {
-    ctx.beginPath();
-    ctx.lineWidth = this.size * 5;
-    ctx.strokeStyle = 'white';
-    ctx.arc(x, y, 12 * this.size, 0, 2 * Math.PI);
-    ctx.stroke();
-    ctx.closePath();
-  }
-  move() {
-    const newPoint = this.nextPoint(this.x, this.y, Date.now());
-    this.draw(newPoint.x, newPoint.y);
-  }
+  return increaseBrush ? ++radius : --radius;
 }
-class Cross extends Element {
-  constructor() {
-    super();
-    this.rotateAngle = getIntRandom(0, 360);
-    this.rotateSpeed = getDblRandom(minSpeed, maxSpeed);
-  }
-  draw(x, y) {
-    ctx.beginPath();
-    ctx.lineWidth = this.size * 5;
-    ctx.strokeStyle = 'white';
-    ctx.translate(x, y);
-    ctx.rotate(this.rotateAngle * Math.PI / 180);
-    ctx.moveTo(20 * this.size / 2, 20 * this.size / 2);
-    ctx.lineTo(-20 * this.size / 2, -20 * this.size / 2);
-    ctx.moveTo(-20 * this.size / 2, 20 * this.size / 2);
-    ctx.lineTo(20 * this.size / 2, -20 * this.size / 2);
-    ctx.rotate(-this.rotateAngle * Math.PI / 180);
-    ctx.translate(-x, -y);
-    ctx.stroke();
-    ctx.closePath();
-  }
-  move() {
-    const newPoint = this.nextPoint(this.x, this.y, Date.now());
-    this.draw(newPoint.x, newPoint.y);
-    this.rotateAngle += this.rotateSpeed / Math.PI * 180;
-  }
+// curves and figures
+function circle(point) {
+  ctx.beginPath();
+  ctx.fillStyle = getHSL(brushColor);
+  ctx.strokeStyle = getHSL(brushColor);
+  ctx.arc(...point, brushRadius / 2, 0, 2 * Math.PI);
+  ctx.fill();
 }
-
-function drawBackground() {
-  const numOfElements = getIntRandom(minElements, maxElements);
-  for (let i = 0; i < numOfElements; i++) {
-    const circle = new Circle();
-    circle.draw(circle.x, circle.y);
-    elements.push(circle);
-    const cross = new Cross();
-    cross.draw(cross.x, cross.y);
-    elements.push(cross);
-  }
+function smoothCurve(point) {
+  ctx.beginPath();
+  ctx.lineWidth = brushRadius;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.fillStyle = getHSL(brushColor);
+  ctx.strokeStyle = getHSL(brushColor);
+  ctx.moveTo(prevX, prevY);
+  ctx.lineTo(...point);
+  ctx.stroke();
+  brushColor = setBrushColor(brushColor, reverse);
+  brushRadius = setBrushRadius(brushRadius);
 }
-document.addEventListener('DOMContentLoaded', drawBackground);
-setInterval(() => {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  elements.forEach(element => element.move());
-}, 50);
+// events
+canvas.addEventListener('mousedown', (event) => {
+  drawing = true;
+  circle([event.offsetX, event.offsetY]);
+  prevX = event.offsetX;
+  prevY = event.offsetY;
+});
+canvas.addEventListener('mouseup', () => {
+  drawing = false;
+});
+canvas.addEventListener('mouseleave', () => {
+  drawing = false;
+});
+canvas.addEventListener('mousemove', (event) => {
+  reverse = event.shiftKey;
+  if (drawing) {
+    smoothCurve([event.offsetX, event.offsetY]);
+    prevX = event.offsetX;
+    prevY = event.offsetY;
+  }
+});
